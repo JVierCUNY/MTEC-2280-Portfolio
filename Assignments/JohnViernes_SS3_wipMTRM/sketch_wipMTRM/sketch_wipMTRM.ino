@@ -2,37 +2,6 @@
 // ESP32-S3 MIDTERM PROJECT
 // 9-LED FIXED-COLOR LINE DISCO ARRAY
 // WITH PHOTOCELL LIGHT SENSOR
-//
-// LED ORDER:
-//
-// LED 1   RED 1
-// LED 2   RED 2
-// LED 3   RED 3
-// LED 4   WHITE 1
-// LED 5   WHITE 2
-// LED 6   WHITE 3
-// LED 7   BLUE 1
-// LED 8   BLUE 2
-// LED 9   BLUE 3
-//
-// ALL LEDs are physically arranged in ONE STRAIGHT LINE.
-//
-// NEXT BUTTON     = GPIO 8
-// PREVIOUS BUTTON = GPIO 9
-//
-// PHOTOCELL       = GPIO 1
-//
-// Photocell circuit:
-//
-// 3.3V ── Photocell ──┬── GPIO 1
-//                     │
-//                    10KΩ
-//                     │
-//                    GND
-//
-// More light = faster animation
-// Less light  = slower animation
-//
 // ============================================================
 
 
@@ -227,19 +196,6 @@ void patternBouncingScanner() {
 
 // ============================================================
 // PATTERN 5
-// CENTER EXPANDING
-//
-// LED 5 is the center of the 9-LED line.
-//
-//                 LED 5
-//                   |
-//                   ●
-//                 /   \
-//               ●       ●
-//             ●           ●
-//           ●               ●
-//
-// Then the animation returns to the center.
 // ============================================================
 
 void patternCenterExpand() {
@@ -479,14 +435,6 @@ void loop() {
 
   // ==========================================================
   // CONVERT LIGHT LEVEL INTO ANIMATION SPEED
-  //
-  // Dark  = 500 ms
-  // Bright = 60 ms
-  //
-  // Therefore:
-  //
-  // DARKER  → SLOWER
-  // BRIGHTER → FASTER
   // ==========================================================
 
   animationSpeed = map(
