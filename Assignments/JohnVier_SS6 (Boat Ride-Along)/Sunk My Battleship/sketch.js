@@ -7,9 +7,14 @@
 // ========================================
 
 // SERIAL CONNECTION
-let serial;
-let portName = "/dev/tty.usbmodem5CBC4014861";
-// Replace this with the full port path that worked previously.
+// DIRECT USB SERIAL CONNECTION
+let serialPort = null;
+let serialReader = null;
+let serialConnected = false;
+let serialStatusText = "Not connected";
+
+let connectButton;
+let serialBuffer = "";
 
 // SENSOR DATA
 let xPotValue = 2048;
@@ -61,15 +66,16 @@ function setup() {
   colorMode(HSB, 360, 100, 100);
 
   // Initialize the serial connection.
-  serial = new p5.SerialPort();
+  // Create a browser connection button.
+connectButton = createButton("Connect to ESP32");
+connectButton.position(10, height + 10);
+connectButton.mousePressed(connectToESP32);
 
-  serial.on("list", printList);
-  serial.on("data", serialEvent);
-  serial.on("open", serialOpened);
-  serial.on("error", serialError);
-
-  serial.list();
-  serial.open(portName);
+// Check whether the browser supports Web Serial.
+if (!("serial" in navigator)) {
+  serialStatusText = "Web Serial unavailable. Use Chrome or Edge.";
+  connectButton.attribute("disabled", "");
+}
 }
 
 // ========================================
@@ -332,13 +338,166 @@ lastNextButton = nextButton;
 // CONNECTION MESSAGES
 // ========================================
 
-function serialOpened() {
-  console.log("Serial connection opened:", portName);
-}
-
-function serialError(error) {
-  console.error("Serial error:", error);
-}
 function serialClosed() {
   console.log("Serial connection closed.");
+}
+
+// ========================================
+// DIRECT WEB SERIAL CONNECTION
+// ========================================
+
+async function connectToESP32() {
+  if (serialConnected) return;
+
+  if (!("serial" in navigator)) {
+    console.error("Web Serial is not supported by this browser.");
+    return;
+  }
+
+  try {
+    // Ask the user to select the ESP32.
+    serialPort = await navigator.serial.requestPort();
+
+    // Open the USB serial connection.
+    await serialPort.open({
+      baudRate: 9600
+    });
+
+    serialConnected = true;
+    serialStatusText = "Connected to ESP32";
+
+    connectButton.html("ESP32 Connected");
+
+    console.log("Connected directly to ESP32!");
+
+    // Begin receiving serial data.
+    readSerialData();
+
+  } catch (error) {
+    console.error("Serial connection failed:", error);
+    serialStatusText = "Connection failed";
+    connectButton.html("Connect to ESP32");
+  }
+}
+
+
+// ========================================
+// READ UART DATA
+// ========================================
+
+async function readSerialData() {
+  const reader = serialPort.readable.getReader();
+  serialReader = reader;
+
+  const decoder = new TextDecoder();
+
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+
+      if (done) {
+        break;
+      }
+
+      // Convert received bytes into text.
+      serialBuffer += decoder.decode(value, {
+        stream: true
+      });
+
+      // Separate complete lines.
+      let lines = serialBuffer.split("\n");
+
+      // Keep any incomplete line for the next reading.
+      serialBuffer = lines.pop() ?? "";
+
+      // Process each complete line.
+      for (let line of lines) {
+        parseSerialLine(line);
+      }
+    }
+
+  } catch (error) {
+    console.error("Serial reading error:", error);
+    serialStatusText = "Serial connection interrupted";
+
+  } finally {
+    reader.releaseLock();
+    serialReader = null;
+    serialConnected = false;
+
+    // Close the port so it can be reconnected.
+    try {
+      await serialPort.close();
+    } catch (error) {
+      console.warn("Port close message:", error);
+    }
+
+    serialPort = null;
+
+    serialStatusText = "Disconnected";
+    connectButton.html("Reconnect to ESP32");
+  }
+}
+
+
+// ========================================
+// PROCESS INCOMING SENSOR DATA
+// ========================================
+
+function parseSerialLine(incoming) {
+  incoming = incoming.trim();
+
+  if (incoming.length === 0) return;
+
+  // Expected format:
+  // xPotValue,yPotValue,previousButton,nextButton
+
+  const values = incoming.split(",");
+
+  if (values.length !== 4) {
+    console.log("Unexpected data:", incoming);
+    return;
+  }
+
+  const newX = Number(values[0]);
+  const newY = Number(values[1]);
+  const newPrevious = Number(values[2]);
+  const newNext = Number(values[3]);
+
+  if (
+    !Number.isFinite(newX) ||
+    !Number.isFinite(newY) ||
+    !Number.isFinite(newPrevious) ||
+    !Number.isFinite(newNext)
+  ) {
+    console.log("Invalid serial data:", incoming);
+    return;
+  }
+
+  // Update potentiometer readings.
+  xPotValue = constrain(newX, 0, 4095);
+  yPotValue = constrain(newY, 0, 4095);
+
+  // Update physical button states.
+  previousButton = newPrevious;
+  nextButton = newNext;
+
+  // Previous button: select the previous boat.
+  if (previousButton === 1 && lastPreviousButton === 0) {
+    currentBoat =
+      (currentBoat + boats.length - 1) % boats.length;
+
+    console.log("Selected:", boats[currentBoat].type);
+  }
+
+  // Next button: select the next boat.
+  if (nextButton === 1 && lastNextButton === 0) {
+    currentBoat =
+      (currentBoat + 1) % boats.length;
+
+    console.log("Selected:", boats[currentBoat].type);
+  }
+
+  lastPreviousButton = previousButton;
+  lastNextButton = nextButton;
 }
