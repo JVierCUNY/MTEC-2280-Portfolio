@@ -1,4 +1,4 @@
-# SS6_somethingyouknowhatever
+# beautiful-pieces-on-display
 
 ## Getting Started
 
