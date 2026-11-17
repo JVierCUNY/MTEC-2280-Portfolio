@@ -1,25 +1,22 @@
 // CALL & LAMP
-// Four buttons send a CALL to p5.js.
-// p5.js sends an ACK back. The LEDs only follow the acknowledged state.
+// Arduino sends the button state to p5.
+// p5 replies with K when it receives the message.
 
 const byte ledPins[4] = {4, 5, 6, 7};
 const byte buttonPins[4] = {8, 9, 10, 11};
 
 const unsigned long debounceMs = 30;
-const unsigned long retryMs = 700;
 
 bool lastReading[4];
 bool buttonPressed[4];
 unsigned long debounceAt[4];
 
-int sequenceNumber = 0;
-int pendingSequence = 0;
-int pendingMask = 0;
 int lastSentMask = 0;
+int sentMask = 0;
 int acknowledgedMask = 0;
-int ledMode = 0;            // 0 = steady, 1 = pulse
-bool waitingForAck = false;
-unsigned long lastCallTime = 0;
+
+int ledMode = 0;  // 0 = STEADY, 1 = PULSE
+bool waitingForResponse = false;
 
 void setup() {
   Serial.begin(115200);
@@ -30,6 +27,7 @@ void setup() {
 
     lastReading[i] = (digitalRead(buttonPins[i]) == LOW);
     buttonPressed[i] = lastReading[i];
+
     digitalWrite(ledPins[i], LOW);
   }
 }
@@ -40,19 +38,14 @@ void loop() {
 
   int currentMask = getButtonMask();
 
-  // Only send a new CALL after the last one was acknowledged.
-  if (!waitingForAck && currentMask != lastSentMask) {
-    sequenceNumber++;
-    pendingSequence = sequenceNumber;
-    pendingMask = currentMask;
-    lastSentMask = currentMask;
-    waitingForAck = true;
-    sendPendingCall();
-  }
+  // Send a CALL when the button state changes.
+  if (!waitingForResponse && currentMask != lastSentMask) {
+    sentMask = currentMask;
 
-  // If p5 misses a CALL, send it again with the same sequence number.
-  if (waitingForAck && millis() - lastCallTime > retryMs) {
-    sendPendingCall();
+    Serial.println(sentMask);
+
+    lastSentMask = currentMask;
+    waitingForResponse = true;
   }
 
   updateLEDs();
@@ -85,38 +78,23 @@ int getButtonMask() {
   return mask;
 }
 
-void sendPendingCall() {
-  Serial.print("CALL,");
-  Serial.print(pendingSequence);
-  Serial.print(",");
-  Serial.println(pendingMask);
-  lastCallTime = millis();
-}
-
 void readFromP5() {
-  if (Serial.available() == 0) return;
+  // Only read when something has arrived.
+  while (Serial.available() > 0) {
+    char message = Serial.read();
 
-  String message = Serial.readStringUntil('\n');
-  message.trim();
-
-  if (message.startsWith("ACK,")) {
-    int firstComma = message.indexOf(',');
-    int secondComma = message.indexOf(',', firstComma + 1);
-
-    if (secondComma > 0) {
-      int receivedSequence = message.substring(firstComma + 1, secondComma).toInt();
-      int receivedMask = message.substring(secondComma + 1).toInt();
-
-      if (waitingForAck && receivedSequence == pendingSequence) {
-        acknowledgedMask = receivedMask;
-        waitingForAck = false;
-      }
+    if (message == 'K') {
+      acknowledgedMask = sentMask;
+      waitingForResponse = false;
     }
-  }
 
-  if (message.startsWith("MODE,")) {
-    ledMode = message.substring(5).toInt();
-    ledMode = constrain(ledMode, 0, 1);
+    if (message == 'S') {
+      ledMode = 0;
+    }
+
+    if (message == 'P') {
+      ledMode = 1;
+    }
   }
 }
 

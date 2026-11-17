@@ -29,9 +29,9 @@ function draw() {
 
   // ONLY when connection is ready.
   if (port.opened() && lastModeSent !== mode) {
-    port.println("MODE," + mode);
-    lastModeSent = mode;
-  }
+  port.write(mode === 0 ? "S" : "P");
+  lastModeSent = mode;
+}
 
   // read only complete arduino commands.
   if (port.opened()) {
@@ -147,24 +147,19 @@ function drawFooter() {
 }
 
 function handleMessage(message) {
-  let parts = message.split(",");
+  if (message === "") return;
+  let buttonNumber = Number(message);
 
-  if (parts[0] === "CALL" && parts.length >= 3) {
-    let sequence = Number(parts[1]);
-    let mask = Number(parts[2]);
+  if (Number.isNaN(buttonNumber)) return;
 
-    if (Number.isNaN(sequence) || Number.isNaN(mask)) return;
-
-    for (let i = 0; i < 4; i++) {
-      lamps[i] = (mask & (1 << i)) !== 0;
-    }
-
-    // This is the response part of the handshake.
-    port.println("ACK," + sequence + "," + mask);
-
-    lastSequence = sequence;
-    lastMessage = "CALL received. ACK sent back to Arduino.";
+  for (let i = 0; i < 4; i++) {
+    lamps[i] = (buttonNumber & (1 << i)) !== 0;
   }
+
+  // RESPONSE: tell Arduino that we received its message.
+  port.write("K");
+
+  lastMessage = "Button state received. K sent back to Arduino.";
 }
 
 function mousePressed() {
@@ -183,8 +178,9 @@ function keyPressed() {
 
 function changeMode() {
   mode = 1 - mode;
+
   if (port.opened()) {
-    port.println("MODE," + mode);
+    port.write(mode === 0 ? "S" : "P");
     lastModeSent = mode;
   }
 }
